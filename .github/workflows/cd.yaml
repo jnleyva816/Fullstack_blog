@@ -1,4 +1,4 @@
-name: Deply Blog Application
+name: Deploy Blog Application
 on:
   push:
     branches:
@@ -6,7 +6,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    enviornment:
+    environment:
       name: production
       url: ${{steps.deploy-frontend.outputs.url}}
     steps:
