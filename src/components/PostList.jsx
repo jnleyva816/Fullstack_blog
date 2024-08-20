@@ -6,7 +6,7 @@ export function PostList({ posts = [] }) {
   return (
     <div>
       {posts.map((post) => (
-        <Fragment key={post.id}>
+        <Fragment key={post._id}>
           <Post {...post} />
           <hr />
         </Fragment>
@@ -16,5 +16,5 @@ export function PostList({ posts = [] }) {
 }
 
 PostList.propTypes = {
-  posts: PropTypes.arrayOf(PropTypes.shape(Post.postTypes)).isRequired,
+  posts: PropTypes.arrayOf(PropTypes.shape(Post.propTypes)).isRequired,
 }

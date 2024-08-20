@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import { describe, expect, test, beforeEach } from '@jest/globals'
+import { describe, expect, test, beforeEach, beforeAll } from '@jest/globals'
 import {
   createPost,
   listAllPosts,
@@ -8,30 +8,30 @@ import {
   getPostById,
   updatePost,
   deletePost,
-} from '../services/posts'
+} from '../services/posts.js'
 
-import { Post } from '../db/models/post'
+import { Post } from '../db/models/post.js'
+import { createUser } from '../services/users.js'
 
-//Array of sample posts
-const samplePosts = [
-  { title: 'My first post', author: 'Joshua Leyva', tags: ['first', 'post'] },
-  { title: 'My second post', author: 'Joshua Leyva', tags: ['second', 'post'] },
-  {
-    title: 'My third post',
-    author: 'Joshua Leyva',
-    tags: ['third', 'post', 'mongoose'],
-  },
-  { title: 'My forth post' },
-]
+let testUser = null
+let samplePosts = []
 
-let createdSamplePosts = []
-beforeEach(async () => {
-  await Post.deleteMany()
-  createdSamplePosts = []
-  for (const post of samplePosts) {
-    const createPost = new Post(post)
-    createdSamplePosts.push(await createPost.save())
-  }
+beforeAll(async () => {
+  testUser = await createUser({ username: 'joshua', password: 'password' })
+  //Array of sample posts
+  samplePosts = [
+    { title: 'My first post', author: testUser._id, tags: ['first', 'post'] },
+    {
+      title: 'My second post',
+      author: testUser._id,
+      tags: ['second', 'post'],
+    },
+    {
+      title: 'My third post',
+      author: testUser._id,
+      tags: ['third', 'post', 'mongoose'],
+    },
+  ]
 })
 
 // Grouping of createPost tests
@@ -40,27 +40,26 @@ describe('creating a post', () => {
   test('should create a post', async () => {
     const post = {
       title: 'My first post',
-      content: 'Hello, world!',
-      author: 'Joshua Leyva',
+      contents: 'Hello, world!',
       tags: ['mongodb', 'mongoose'],
     }
-    const createdPost = await createPost(post)
+    const createdPost = await createPost(testUser._id, post)
     expect(createdPost._id).toBeInstanceOf(mongoose.Types.ObjectId)
 
     const foundPost = await Post.findById(createdPost._id)
     expect(foundPost).toEqual(expect.objectContaining(post))
     expect(foundPost.createdAt).toBeInstanceOf(Date)
     expect(foundPost.updatedAt).toBeInstanceOf(Date)
+    expect(String(foundPost.author?._id)).toMatch(String(testUser?._id))
   })
   // This test case verifies that a post cannot be created without a title.
   test('should require a title', async () => {
     const post = {
-      author: 'Joshua Leyva',
       content: 'Hello, world!',
       tags: ['empty'],
     }
     try {
-      await createPost(post)
+      await createPost(testUser._id, post)
     } catch (err) {
       expect(err).toBeInstanceOf(mongoose.Error.ValidationError)
       expect(err.message).toContain('`title` is required')
@@ -71,11 +70,20 @@ describe('creating a post', () => {
     const post = {
       title: 'My first post',
     }
-    const createdPost = await createPost(post)
+    const createdPost = await createPost(testUser._id, post)
     expect(createdPost._id).toBeInstanceOf(mongoose.Types.ObjectId)
   })
 })
 
+let createdSamplePosts = []
+beforeEach(async () => {
+  await Post.deleteMany()
+  createdSamplePosts = []
+  for (const post of samplePosts) {
+    const createPost = new Post(post)
+    createdSamplePosts.push(await createPost.save())
+  }
+})
 // Grouping of listPosts tests
 describe('Listing posts', () => {
   // This test case verifies that all posts can be retrieved.
@@ -108,7 +116,7 @@ describe('Listing posts', () => {
   })
   // This test should be able to filter posts by author.
   test('should be able to filter posts by author', async () => {
-    const posts = await listPostsByAuthor('Joshua Leyva')
+    const posts = await listPostsByAuthor(testUser.username)
     expect(posts.length).toEqual(3)
   })
   // This test should be able to filter posts by tag.
@@ -134,27 +142,33 @@ describe('Getting a post', () => {
 describe('Updating a post', () => {
   // This test should update the specific property.
   test('should update the specific property', async () => {
-    await updatePost(createdSamplePosts[0]._id, { author: 'Test Author' })
+    await updatePost(testUser._id, createdSamplePosts[0]._id, {
+      contents: 'Hello, world!',
+    })
     const updatedPost = await Post.findById(createdSamplePosts[0]._id)
-    expect(updatedPost.author).toEqual('Test Author')
+    expect(updatedPost.contents).toEqual('Hello, world!')
   })
   // This test should not update other properties.
   test('shold not update other properties', async () => {
-    await updatePost(createdSamplePosts[0]._id, { author: 'Test Author' })
+    await updatePost(testUser._id, createdSamplePosts[0]._id, {
+      contents: 'Hello World',
+    })
     const updatedPost = await Post.findById(createdSamplePosts[0]._id)
     expect(updatedPost.title).toEqual('My first post')
   })
   // This test should update the updateAt timestamp.
   test('should update the updateAt timestamp', async () => {
-    await updatePost(createdSamplePosts[0]._id, { author: 'Test Author' })
+    await updatePost(testUser._id, createdSamplePosts[0]._id, {
+      contents: 'Hello World',
+    })
     const updatedPost = await Post.findById(createdSamplePosts[0]._id)
     expect(updatedPost.updatedAt.getTime()).toBeGreaterThan(
       createdSamplePosts[0].updatedAt.getTime(),
     )
   })
   test('should fail if the id does not exist', async () => {
-    const post = await updatePost('000000000000000000000000', {
-      author: 'Test Author',
+    const post = await updatePost(testUser._id, '000000000000000000000000', {
+      contents: 'Hello World',
     })
     expect(post).toBeNull()
   })
@@ -163,14 +177,14 @@ describe('Updating a post', () => {
 describe('Deleting a post', () => {
   // This test should delete a post
   test('should delete a post', async () => {
-    const result = await deletePost(createdSamplePosts[0]._id)
+    const result = await deletePost(testUser._id, createdSamplePosts[0]._id)
     expect(result.deletedCount).toEqual(1)
     const deletedPost = await Post.findById(createdSamplePosts[0]._id)
     expect(deletedPost).toBeNull()
   })
   // This test should return 0 if the id does not exist.
   test('should fail if the id does not exist', async () => {
-    const result = await deletePost('000000000000000000000000')
+    const result = await deletePost(testUser._id, '000000000000000000000000')
     expect(result.deletedCount).toEqual(0)
   })
 })
